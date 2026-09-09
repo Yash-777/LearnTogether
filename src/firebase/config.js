@@ -42,7 +42,7 @@ const clientApiKey = import.meta.env.VITE_FIREBASE_API_KEY || '';
       messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
       appId: import.meta.env.VITE_FIREBASE_APP_ID,
     };
-
+    conssole.log('Initializing Firebase client SDK with config:', firebaseConfig);
     const app = initializeApp(firebaseConfig);
     auth = getAuth(app);
     db = getFirestore(app);
@@ -53,6 +53,7 @@ const clientApiKey = import.meta.env.VITE_FIREBASE_API_KEY || '';
   // initialization if running in Node and GOOGLE_APPLICATION_CREDENTIALS is
   // available (or a local service account file exists).
   if (typeof window === 'undefined') {
+    console.log('VITE_FIREBASE_API_KEY is empty. Attempting server-side Firebase Admin SDK initialization...');
     try {
       const adminImport = await import('firebase-admin');
       const admin = adminImport.default ?? adminImport;
@@ -100,5 +101,28 @@ const clientApiKey = import.meta.env.VITE_FIREBASE_API_KEY || '';
   }
 
   // Running in browser and no client API key: nothing we can do here.
-  console.warn('VITE_FIREBASE_API_KEY is empty and no server-side credentials available. Firebase not initialized.');
+  console.error(`
+╔════════════════════════════════════════════════════════════════════╗
+║                   FIREBASE NOT CONFIGURED                          ║
+╚════════════════════════════════════════════════════════════════════╝
+
+VITE_FIREBASE_API_KEY is empty and no server-side credentials available.
+
+TO FIX THIS:
+1. Go to  Firebase Console: https://console.firebase.google.com
+2. Select your project → Project Settings → General tab
+3. Scroll to "Your apps" → Click on your Web app → Firebase SDK snippet → Config - Copy the entire config object
+4. Open .env file in your project root
+5. Fill in the VITE_FIREBASE_* variables:
+   VITE_FIREBASE_API_KEY=AIza...
+   VITE_FIREBASE_AUTH_DOMAIN=your-project.firebaseapp.com
+   VITE_FIREBASE_PROJECT_ID=your-project-id
+   VITE_FIREBASE_STORAGE_BUCKET=your-project.appspot.com
+   VITE_FIREBASE_MESSAGING_SENDER_ID=123456789
+   VITE_FIREBASE_APP_ID=1:123456789:web:abc123...
+
+6. Save the file and refresh your browser
+
+See README.md "Setting up Firebase" for detailed instructions.
+`);
 })();

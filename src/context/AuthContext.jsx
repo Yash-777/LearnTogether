@@ -73,6 +73,12 @@ export function AuthProvider({ children }) {
   }, [user, db]);
 
   async function signUp(email, password) {
+    if (!auth || !db) {
+      console.error('signUp: Firebase is not configured. Please check your .env file and ensure VITE_FIREBASE_API_KEY and other Firebase credentials are filled in. See README.md "Setting up Firebase" for instructions.');
+      throw new Error(
+        'Firebase is not configured. Please check your .env file and ensure VITE_FIREBASE_API_KEY and other Firebase credentials are filled in. See README.md "Setting up Firebase" for instructions.'
+      );
+    }
     const credential = await createUserWithEmailAndPassword(auth, email, password);
     const deviceId = getDeviceId();
     // New accounts default to "viewer" - an admin has to promote
@@ -86,6 +92,12 @@ export function AuthProvider({ children }) {
   }
 
   async function signIn(email, password) {
+    if (!auth || !db) {
+      console.error('signIn: Firebase is not configured. Please check your .env file and ensure VITE_FIREBASE_API_KEY and other Firebase credentials are filled in. See README.md "Setting up Firebase" for instructions.');
+      throw new Error(
+        'Firebase is not configured. Please check your .env file and ensure VITE_FIREBASE_API_KEY and other Firebase credentials are filled in. See README.md "Setting up Firebase" for instructions.'
+      );
+    }
     const credential = await signInWithEmailAndPassword(auth, email, password);
     const deviceId = getDeviceId();
     const userRef = doc(db, 'users', credential.user.uid);

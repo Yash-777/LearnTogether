@@ -38,16 +38,29 @@ creating your own free Firebase project:
 3. **Enable Firestore**: Build → Firestore Database → Create database (start
    in test mode for local development - see the security note below).
 4. **Get your web app config**: Project settings → General → "Your apps" →
-   add a Web app → copy the config values into a `.env` file (copy
-   `.env.example` to `.env` first) as `VITE_FIREBASE_*`.
+   add a Web app → copy the config values into a `.env` file:
+   ```bash
+   # Copy the example file
+   copy .env.example .env
+   ```
+   Then fill in the `VITE_FIREBASE_*` variables with your values:
+   ```
+   VITE_FIREBASE_API_KEY=AIza...
+   VITE_FIREBASE_AUTH_DOMAIN=your-project.firebaseapp.com
+   VITE_FIREBASE_PROJECT_ID=your-project-id
+   VITE_FIREBASE_STORAGE_BUCKET=your-project.appspot.com
+   VITE_FIREBASE_MESSAGING_SENDER_ID=123456789
+   VITE_FIREBASE_APP_ID=1:123456789:web:abc123...
+   ```
+   
 5. **Get a service account key** (for the server, not the browser): Project
    settings → Service accounts → "Generate new private key" → save the
-   downloaded JSON as `server/serviceAccountKey.json` (already gitignored),
-   and set `GOOGLE_APPLICATION_CREDENTIALS=./server/serviceAccountKey.json`
-   in `.env` (the server reads this as a real OS environment variable, so on
-   Windows PowerShell you'd instead run
-   `$env:GOOGLE_APPLICATION_CREDENTIALS="./server/serviceAccountKey.json"`
-   before `npm run server`, or use a tool like `dotenv-cli`).
+   downloaded JSON file. Place it at:
+   ```
+   c:\Yashwanth\WorkSetup\NodeJS\serviceAccountKey.json
+   ```
+   (or update `GOOGLE_APPLICATION_CREDENTIALS` path in `.env` if you prefer a different location)
+
 6. **Promote yourself to admin**: sign up through the app once (you'll start
    as "viewer"), then in the Firebase console open Firestore → `users`
    collection → your document → change `role` to `"admin"` manually. From

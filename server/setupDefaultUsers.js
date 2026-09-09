@@ -16,18 +16,17 @@
 
 import admin from 'firebase-admin';
 import crypto from 'crypto';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import dotenv from 'dotenv';
 
-// Initialize Firebase Admin SDK
-if (!admin.apps.length) {
-  admin.initializeApp({
-    credential: admin.credential.applicationDefault(),
-  });
-}
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-const adminAuth = admin.auth();
-const adminDb = admin.firestore();
+// Load .env file from project root
+dotenv.config({ path: path.join(__dirname, '..', '.env') });
 
-// Color codes for console output
+// Color codes for console output (defined early for error messages)
 const colors = {
   reset: '\x1b[0m',
   green: '\x1b[32m',
@@ -35,6 +34,87 @@ const colors = {
   blue: '\x1b[34m',
   red: '\x1b[31m',
 };
+
+// Helper function to load service account key
+function loadServiceAccountKey() {
+  // Build list of paths to check
+  const possiblePaths = [];
+  
+  // 1. Check GOOGLE_APPLICATION_CREDENTIALS env var (from .env or system)
+  if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+    const envPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
+    // Handle both relative and absolute paths
+    const resolvedPath = path.isAbsolute(envPath) 
+      ? envPath 
+      : path.resolve(path.join(__dirname, '..', envPath));
+    possiblePaths.push(resolvedPath);
+    console.log(`${colors.blue}ℹ Checking GOOGLE_APPLICATION_CREDENTIALS: ${resolvedPath}${colors.reset}`);
+  }
+  
+  // 2. Check common default locations
+  possiblePaths.push(path.join(__dirname, 'serviceAccountKey.json'));
+  possiblePaths.push(path.join(__dirname, '..', 'serviceAccountKey.json'));
+  possiblePaths.push(path.join(__dirname, '..', 'secrets', 'serviceAccountKey.json'));
+  possiblePaths.push(path.join(__dirname, 'secrets', 'serviceAccountKey.json'));
+
+  for (const filePath of possiblePaths) {
+    try {
+      if (fs.existsSync(filePath)) {
+        console.log(`${colors.blue}✓ Loading service account key from: ${filePath}${colors.reset}`);
+        return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+      }
+    } catch (err) {
+      // Silently skip non-existent or invalid paths
+    }
+  }
+
+  return null;
+}
+
+// Initialize Firebase Admin SDK
+async function initializeFirebase() {
+  if (!admin.apps.length) {
+    const serviceAccountKey = loadServiceAccountKey();
+
+    if (!serviceAccountKey) {
+      console.error(`
+${colors.red}✗ FATAL: Service account key not found!${colors.reset}
+
+${colors.yellow}To fix this:${colors.reset}
+1. Download your service account key from Firebase Console:
+   - Go to https://console.firebase.google.com
+   - Select your project → Project settings → Service accounts
+   - Click "Generate new private key" → save the JSON file
+
+2. Save it in one of these locations:
+   - ${path.join(__dirname, 'serviceAccountKey.json')}
+   - ${path.join(__dirname, 'secrets', 'serviceAccountKey.json')}
+   - Or set GOOGLE_APPLICATION_CREDENTIALS environment variable:
+     $env:GOOGLE_APPLICATION_CREDENTIALS="./path/to/serviceAccountKey.json"
+
+3. Run this script again:
+   npm run setup-users
+
+${colors.red}Aborting.${colors.reset}\n`);
+      process.exit(1);
+    }
+
+    try {
+      admin.initializeApp({
+        credential: admin.credential.cert(serviceAccountKey),
+        projectId: serviceAccountKey.project_id,
+      });
+    } catch (err) {
+      console.error(`${colors.red}✗ FATAL: Failed to initialize Firebase: ${err.message}${colors.reset}`);
+      process.exit(1);
+    }
+  }
+
+  return {
+    adminAuth: admin.auth(),
+    adminDb: admin.firestore(),
+  };
+}
 
 function generateRandomPassword(length = 16) {
   // Generate a cryptographically secure random password
@@ -80,6 +160,9 @@ const defaultUsers = [
 ];
 
 async function setupUsers() {
+  // Initialize Firebase
+  const { adminAuth, adminDb } = await initializeFirebase();
+
   console.log(`\n${colors.blue}🚀 Setting up default LearnTogether users...${colors.reset}\n`);
 
   const createdUsers = [];
@@ -87,34 +170,49 @@ async function setupUsers() {
 
   for (const user of defaultUsers) {
     try {
-      console.log(`${colors.yellow}Creating user: ${user.username}...${colors.reset}`);
-      
-      // Create user in Firebase Authentication
-      const userRecord = await adminAuth.createUser({
-        email: user.email,
-        password: user.password,
-        displayName: user.displayName,
-      });
+      console.log(`${colors.yellow}Processing user: ${user.username}...${colors.reset}`);
 
-      // Add user role to Firestore
-      await adminDb.collection('users').doc(userRecord.uid).set({
+      let uid;
+      let isNew = false;
+      try {
+        // Attempt to create the user in Firebase Authentication
+        const userRecord = await adminAuth.createUser({
+          email: user.email,
+          password: user.password,
+          displayName: user.displayName,
+        });
+        uid = userRecord.uid;
+        isNew = true;
+      } catch (authError) {
+        // If they exist, fetch their UID to safely sync with Firestore
+        if (authError.code === 'auth/email-already-exists') {
+          const existingUser = await adminAuth.getUserByEmail(user.email);
+          uid = existingUser.uid;
+          console.log(`${colors.yellow}⚠ User ${user.username} already exists. Syncing Firestore...${colors.reset}`);
+        } else {
+          throw authError;
+        }
+      }
+
+      // Add/update user profile in Firestore
+      await adminDb.collection('users').doc(uid).set({
         email: user.email,
         username: user.username,
         role: user.role,
         displayName: user.displayName,
         createdAt: new Date().toISOString(),
         createdBy: 'setup-script',
-      });
+      }, { merge: true });
 
-      console.log(`${colors.green}✓ Created ${user.username}${colors.reset}`);
-      
+      console.log(`${colors.green}✓ ${isNew ? 'Created' : 'Synced'} ${user.username}${colors.reset}`);
       createdUsers.push({
         username: user.username,
         email: user.email,
-        password: user.password,
+        password: isNew ? user.password : '[Preserved]',
         role: user.role,
-        uid: userRecord.uid,
+        uid,
       });
+
     } catch (error) {
       if (error.code === 'auth/email-already-exists') {
         console.log(`${colors.yellow}⚠ User ${user.username} (${user.email}) already exists - skipping${colors.reset}`);
