@@ -37,6 +37,7 @@ import { auth, db } from '../firebase/config.js';
 import { getDeviceId } from '../utils/deviceId.js';
 
 const MAX_DEVICES = 2;
+const DEV_MODE_ADMIN = import.meta.env.DEV && import.meta.env.VITE_DEV_ADMIN === 'true';
 
 const AuthContext = createContext(null);
 
@@ -45,17 +46,35 @@ export function AuthProvider({ children }) {
   const [profile, setProfile] = useState(null);  // Firestore users/{uid} doc: { email, role, sessions }
   const [loading, setLoading] = useState(true);
 
-  // Runs once on mount. onAuthStateChanged fires immediately with the
-  // current auth state, then again on every sign-in/out - this is
-  // how the app "remembers" you're logged in across page refreshes.
+  // DEV MODE: automatically create a fake admin user for development
   useEffect(() => {
-    if (!auth) return; // auth may be null until firebase config initializes
+    if (DEV_MODE_ADMIN) {
+      console.log('🔐 DEV MODE ADMIN: Auto-authenticated as admin (no Firebase login required)');
+      setUser({
+        uid: 'dev-admin-uid',
+        email: 'dev@admin.local',
+        displayName: 'Dev Admin',
+      });
+      setProfile({
+        email: 'dev@admin.local',
+        role: 'admin',
+        displayName: 'Dev Admin',
+      });
+      setLoading(false);
+      return;
+    }
+
+    // Normal Firebase auth flow
+    if (!auth) {
+      setLoading(false);
+      return;
+    }
     const unsubscribeAuth = onAuthStateChanged(auth, (firebaseUser) => {
       setUser(firebaseUser);
       setLoading(false);
     });
     return unsubscribeAuth;
-  }, [auth]);
+  }, []);
 
   // Whenever the logged-in user changes, subscribe to their Firestore
   // profile doc in real time (onSnapshot, not one-time getDoc) - so
@@ -124,6 +143,11 @@ export function AuthProvider({ children }) {
   }
 
   async function signOutCurrentDevice() {
+    if (DEV_MODE_ADMIN) {
+      setUser(null);
+      setProfile(null);
+      return;
+    }
     if (user) {
       const deviceId = getDeviceId();
       const userRef = doc(db, 'users', user.uid);
